@@ -8,11 +8,12 @@ SW3  -- QR code for https://robojuice.com/
 
 Hidden shortcuts:
 SW1 + SW3       -- LinkedIn QR code
+Hold SW1 + SW2  -- Breakout
 Hold SW2 + SW3  -- one-player Pong
 
-Pong controls:
+Game controls:
 SW1  -- move right
-SW2  -- quit; double-tap changes computer mode
+SW2  -- quit; double-tap changes Pong computer mode
 SW3  -- move left
 
 Hold all three switches for 1.25 seconds to return to the Carolina
@@ -423,13 +424,237 @@ def play_pong():
         display.refresh()
 
 
+def play_breakout():
+    """Run Breakout until SW2 is pressed.
+
+    Gameplay adapted from Adafruit's MIT-licensed CircuitPython Breakout:
+    Copyright (c) 2025 Anne Barela for Adafruit Industries
+    https://learn.adafruit.com/breakout-game-on-metro-rp2350-and-fruit-jam
+    """
+    game_width = 160
+    game_height = 128
+    paddle_width = 32
+    paddle_height = 4
+    paddle_y = 119
+    ball_size = 4
+    frame_seconds = 1.0 / 30.0
+    starting_lives = 3
+
+    scene = displayio.Group()
+    scene.append(solid_tile(game_width, game_height, 0x000010))
+
+    status = centered_on("LIVES 3   BRICKS 40", game_width // 2, 8, 0xFFFFFF)
+    message = centered_on("", game_width // 2, 67, 0xFFFFFF)
+    hint = centered_on("S3<     S2 QUIT     >S1", game_width // 2, 108, 0x607080)
+    scene.append(status)
+    scene.append(message)
+    scene.append(hint)
+
+    paddle = solid_tile(paddle_width, paddle_height, 0x00D8FF)
+    ball = solid_tile(ball_size, ball_size, 0xFFFFFF)
+    paddle.x = (game_width - paddle_width) // 2
+    paddle.y = paddle_y
+    ball.x = (game_width - ball_size) // 2
+    ball.y = paddle_y - 18
+    scene.append(paddle)
+    scene.append(ball)
+
+    brick_width = 13
+    brick_height = 6
+    brick_gap = 2
+    brick_colors = (0xFF4050, 0xFF9A30, 0xFFE040, 0x40D878)
+    brick_bitmap = displayio.Bitmap(brick_width, brick_height, 1)
+    brick_palettes = []
+    for color in brick_colors:
+        palette = displayio.Palette(1)
+        palette[0] = color
+        brick_palettes.append(palette)
+
+    bricks = []
+    for row in range(4):
+        for column in range(10):
+            brick_x = 6 + column * (brick_width + brick_gap)
+            brick_y = 20 + row * (brick_height + brick_gap)
+            tile = displayio.TileGrid(
+                brick_bitmap,
+                pixel_shader=brick_palettes[row],
+                x=brick_x,
+                y=brick_y,
+            )
+            scene.append(tile)
+            bricks.append([tile, brick_x, brick_y, True])
+
+    display.rotation = 90
+    display.root_group = scene
+    pixels.fill((0, 0, 0))
+    pixels.show()
+
+    # Do not treat the SW1 + SW2 entry chord as game input.
+    while not (sw1.value and sw2.value and sw3.value):
+        time.sleep(0.02)
+
+    def countdown(text="BREAKOUT"):
+        message.text = text
+        display.refresh()
+        time.sleep(0.6)
+        for number in (3, 2, 1):
+            message.text = str(number)
+            display.refresh()
+            time.sleep(1.0)
+        message.text = ""
+
+    def reset_bricks():
+        for brick in bricks:
+            brick[0].hidden = False
+            brick[3] = True
+
+    def reset_ball():
+        return (
+            (game_width - ball_size) / 2,
+            paddle_y - 18.0,
+            62.0,
+            -68.0,
+        )
+
+    paddle_x = (game_width - paddle_width) / 2
+    lives = starting_lives
+    bricks_left = len(bricks)
+    countdown()
+    ball_x, ball_y, ball_vx, ball_vy = reset_ball()
+    last_frame = time.monotonic()
+
+    while True:
+        now = time.monotonic()
+        if now - last_frame < frame_seconds:
+            time.sleep(0.003)
+            continue
+        dt = now - last_frame
+        if dt > 0.08:
+            dt = 0.08
+        last_frame = now
+
+        if not sw2.value:
+            display.rotation = 0
+            return
+
+        if not sw1.value and sw3.value:
+            paddle_x += 105.0 * dt
+        elif not sw3.value and sw1.value:
+            paddle_x -= 105.0 * dt
+        if paddle_x < 0:
+            paddle_x = 0
+        elif paddle_x > game_width - paddle_width:
+            paddle_x = game_width - paddle_width
+
+        previous_ball_x = ball_x
+        ball_x += ball_vx * dt
+        ball_y += ball_vy * dt
+
+        if ball_x <= 0:
+            ball_x = 0
+            ball_vx = abs(ball_vx)
+        elif ball_x >= game_width - ball_size:
+            ball_x = game_width - ball_size
+            ball_vx = -abs(ball_vx)
+        if ball_y <= 15:
+            ball_y = 15
+            ball_vy = abs(ball_vy)
+
+        if (
+            ball_vy > 0
+            and ball_y + ball_size >= paddle_y
+            and ball_y <= paddle_y + paddle_height
+            and ball_x + ball_size >= paddle_x
+            and ball_x <= paddle_x + paddle_width
+        ):
+            ball_y = paddle_y - ball_size
+            offset = (
+                (ball_x + ball_size / 2)
+                - (paddle_x + paddle_width / 2)
+            ) / (paddle_width / 2)
+            ball_vy = -abs(ball_vy)
+            ball_vx += offset * 24.0
+            if ball_vx > 105.0:
+                ball_vx = 105.0
+            elif ball_vx < -105.0:
+                ball_vx = -105.0
+
+        for brick in bricks:
+            if not brick[3]:
+                continue
+            brick_x = brick[1]
+            brick_y = brick[2]
+            if (
+                ball_x + ball_size >= brick_x
+                and ball_x <= brick_x + brick_width
+                and ball_y + ball_size >= brick_y
+                and ball_y <= brick_y + brick_height
+            ):
+                brick[3] = False
+                brick[0].hidden = True
+                bricks_left -= 1
+                status.text = "LIVES %d   BRICKS %d" % (lives, bricks_left)
+
+                came_from_side = (
+                    previous_ball_x + ball_size <= brick_x
+                    or previous_ball_x >= brick_x + brick_width
+                )
+                if came_from_side:
+                    ball_vx = -ball_vx
+                else:
+                    ball_vy = -ball_vy
+                break
+
+        if ball_y > game_height:
+            lives -= 1
+            if lives > 0:
+                message.text = "BALL LOST"
+                status.text = "LIVES %d   BRICKS %d" % (lives, bricks_left)
+                display.refresh()
+                time.sleep(1.0)
+                message.text = ""
+                ball_x, ball_y, ball_vx, ball_vy = reset_ball()
+                last_frame = time.monotonic()
+            else:
+                pixels.fill((40, 5, 0))
+                pixels.show()
+                countdown("GAME OVER")
+                pixels.fill((0, 0, 0))
+                pixels.show()
+                lives = starting_lives
+                bricks_left = len(bricks)
+                reset_bricks()
+                status.text = "LIVES 3   BRICKS 40"
+                ball_x, ball_y, ball_vx, ball_vy = reset_ball()
+                last_frame = time.monotonic()
+        elif bricks_left == 0:
+            pixels.fill((0, 40, 12))
+            pixels.show()
+            countdown("YOU WIN!")
+            pixels.fill((0, 0, 0))
+            pixels.show()
+            lives = starting_lives
+            bricks_left = len(bricks)
+            reset_bricks()
+            status.text = "LIVES 3   BRICKS 40"
+            ball_x, ball_y, ball_vx, ball_vy = reset_ball()
+            last_frame = time.monotonic()
+
+        paddle.x = int(paddle_x)
+        paddle.y = paddle_y
+        ball.x = int(ball_x)
+        ball.y = int(ball_y)
+        display.refresh()
+
+
 current_screen = HOME
 show_screen(current_screen)
 backlight.value = True
 
 previous = (True, True, True)
 reset_started = None
-game_hold_started = None
+pong_hold_started = None
+breakout_hold_started = None
 last_time = time.monotonic()
 
 while True:
@@ -439,7 +664,8 @@ while True:
 
     values = (sw1.value, sw2.value, sw3.value)
     all_pressed = not values[0] and not values[1] and not values[2]
-    game_pressed = values[0] and not values[1] and not values[2]
+    breakout_pressed = not values[0] and not values[1] and values[2]
+    pong_pressed = values[0] and not values[1] and not values[2]
     linkedin_pressed = not values[0] and values[1] and not values[2]
 
     # A deliberate hold prevents an accidental reset while someone
@@ -459,22 +685,39 @@ while True:
 
     reset_started = None
 
-    if game_pressed:
-        if game_hold_started is None:
-            game_hold_started = now
-        elif now - game_hold_started >= GAME_HOLD_SECONDS:
-            play_pong()
+    if breakout_pressed:
+        if breakout_hold_started is None:
+            breakout_hold_started = now
+        elif now - breakout_hold_started >= GAME_HOLD_SECONDS:
+            play_breakout()
             current_screen = INFO
             show_screen(current_screen)
             previous = (sw1.value, sw2.value, sw3.value)
             last_time = time.monotonic()
-            game_hold_started = None
+            breakout_hold_started = None
         else:
             previous = values
         time.sleep(0.02)
         continue
 
-    game_hold_started = None
+    breakout_hold_started = None
+
+    if pong_pressed:
+        if pong_hold_started is None:
+            pong_hold_started = now
+        elif now - pong_hold_started >= GAME_HOLD_SECONDS:
+            play_pong()
+            current_screen = INFO
+            show_screen(current_screen)
+            previous = (sw1.value, sw2.value, sw3.value)
+            last_time = time.monotonic()
+            pong_hold_started = None
+        else:
+            previous = values
+        time.sleep(0.02)
+        continue
+
+    pong_hold_started = None
     pressed1 = not values[0] and previous[0]
     pressed2 = not values[1] and previous[1]
     pressed3 = not values[2] and previous[2]

@@ -78,10 +78,10 @@ public/
 
 Each sample folder contains a `code.py` and a `README.md` explaining what the sample does, its controls, and a brief walkthrough of the code design.
 
-## Preloaded Robojuice Menu and Pong
+## Preloaded Robojuice Menu and Games
 
 The top-level `code.py` included in this repository is the Robojuice badge
-menu. Its three buttons also provide two hidden shortcuts:
+menu. Its three buttons also provide three hidden shortcuts:
 
 | Input | Menu action |
 |---|---|
@@ -89,6 +89,7 @@ menu. Its three buttons also provide two hidden shortcuts:
 | SW2 | Show Brandon Joyce's information |
 | SW3 | Show the Robojuice QR code |
 | SW1 + SW3 together | Show the labeled LinkedIn QR code |
+| Hold SW1 + SW2 for 0.6 seconds | Start Breakout |
 | Hold SW2 + SW3 for 0.6 seconds | Start one-player Pong |
 | Hold SW1 + SW2 + SW3 for 1.25 seconds | Show the Carolina Code Conference screen |
 
@@ -101,11 +102,22 @@ like the original open-source automated paddle. The current mode appears near
 the top of the game screen. The first side to five points wins; after the
 result, the game automatically restarts with a three-second countdown.
 
+Breakout also rotates the display into landscape orientation. Hold **SW1** to
+move the paddle right, hold **SW3** to move it left, and press **SW2** to quit.
+Clear all 40 bricks before losing three balls to win. After a win or game over,
+Breakout automatically resets with a three-second countdown.
+
 The Pong fixed-frame game loop and automated-paddle pattern were adapted from
 FoamyGuy's MIT-licensed
 [CircuitPython Badge Reverse Pong Game](https://github.com/FoamyGuy/CircuitPython-Badge-Reverse-Pong-Game).
 The implementation here uses the badge's existing `displayio` primitives and
 button wiring, so it does not require any additional libraries.
+
+The Breakout gameplay was adapted from Anne Barela and Adafruit Industries'
+MIT-licensed
+[Breakout Game on the Metro RP2350 and Fruit Jam](https://learn.adafruit.com/breakout-game-on-metro-rp2350-and-fruit-jam/code-for-the-metro).
+Its HDMI, keyboard, shape-library, and sound layers were replaced with this
+badge's existing `displayio` tiles and three-button controls.
 
 
 ### What's preloaded
