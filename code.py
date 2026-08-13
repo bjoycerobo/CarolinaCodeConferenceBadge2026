@@ -1,108 +1,64 @@
 """
-code.py -- Sample launcher for the Carolina Code Conference 2026 badge.
-=======================================================================
-Shows a picker on boot, then hands off to one of the samples in
-/samples/. The samples themselves are unchanged -- the launcher runs
-their code.py verbatim via exec().
+Robojuice conference badge
+==========================
 
-Boot behavior
--------------
-On reset, the picker appears for a few seconds with a countdown. If
-no button is pressed, the launcher auto-runs the sample chosen last
-time. On a fresh badge with no saved selection, it runs whichever
-sample is alphabetically first. Press any button during the countdown
-to stay in the picker.
+SW1  -- Robojuice home
+SW2  -- Robojuice / Brandon Joyce information
+SW3  -- QR code for https://robojuice.com/
 
-Samples are discovered dynamically -- any folder under /samples/ that
-contains a code.py becomes a picker entry.
+Hold all three switches for 1.25 seconds to return to the Carolina
+Code Conference default screen.
 
-Picker controls
----------------
-  SW1  -- up   (previous sample)
-  SW2  -- down (next sample)
-  SW3  -- run selected sample
-
-The last selection persists in microcontroller.nvm across power
-cycles, so hitting reset re-runs the same sample.
-
-Restoring the launcher
-----------------------
-The launcher's source lives at samples/Launcher/code.py -- copy it
-over the top-level code.py (same workflow as installing any other
-sample) to get the picker back. The samples are self-contained.
+The original sample launcher remains at samples/Launcher/code.py.
 """
 
-# --- backlight off FIRST, before the slow adafruit imports --------
-# The LCD panel powers up bright white. If we wait until after
-# adafruit_st7735r and adafruit_display_text finish importing (a few
-# seconds on cold boot), the attendee stares at a white screen. Grab
-# IO5 and drive it low up front so the panel is dark while the rest
-# of the launcher warms up.
+# Keep the LCD dark while CircuitPython imports the display libraries.
 import board
 import digitalio
-bl = digitalio.DigitalInOut(board.IO5)
-bl.direction = digitalio.Direction.OUTPUT
-bl.value = False
 
-import os
+backlight = digitalio.DigitalInOut(board.IO5)
+backlight.direction = digitalio.Direction.OUTPUT
+backlight.value = False
+
 import time
+import math
 import busio
 import displayio
 import fourwire
 import terminalio
-import microcontroller
+import neopixel
+import adafruit_imageload
 import adafruit_st7735r
 from adafruit_display_text import label
 
 
-# ------------------------------------------------------------------
-# Auto-discover samples: any folder under /samples/ that contains a
-# code.py becomes a picker entry. Sorted alphabetically for stable
-# ordering. Drop in a new sample folder and it just shows up.
-#
-# samples/Launcher/ holds a backup copy of this launcher so people can
-# restore it after clobbering root code.py with another sample. Skip
-# it here so it doesn't list itself in its own picker.
-# ------------------------------------------------------------------
-SELF_NAME = "Launcher"
+WIDTH = 128
+HEIGHT = 160
+HOLD_TO_RESET_SECONDS = 1.25
+
+HOME = 0
+INFO = 1
+QR = 2
+CONFERENCE = 3
 
 
-def discover_samples():
-    try:
-        entries = os.listdir("/samples")
-    except OSError:
-        return ()
-    valid = []
-    for name in entries:
-        if name.startswith(".") or name == SELF_NAME:
-            continue
-        try:
-            os.stat("/samples/%s/code.py" % name)
-        except OSError:
-            continue
-        valid.append(name)
-    valid.sort()
-    return tuple(valid)
+# Hardware ---------------------------------------------------------
+pixels = neopixel.NeoPixel(board.IO4, 5, brightness=0.08, auto_write=False)
+pixels.fill((0, 0, 0))
+pixels.show()
 
 
-SAMPLES = discover_samples()
-
-COUNTDOWN_SEC = 3
-
-
-# ------------------------------------------------------------------
-# Hardware (all released before handing off to the sample)
-# ------------------------------------------------------------------
-def _btn(pin):
-    b = digitalio.DigitalInOut(pin)
-    b.switch_to_input(pull=digitalio.Pull.UP)
-    return b
+def button(pin):
+    switch = digitalio.DigitalInOut(pin)
+    switch.switch_to_input(pull=digitalio.Pull.UP)
+    return switch
 
 
-sw1 = _btn(board.IO1)
-sw2 = _btn(board.IO2)
-sw3 = _btn(board.IO43)
+sw1 = button(board.IO1)
+sw2 = button(board.IO2)
+sw3 = button(board.IO43)
 
+# Keep the optional font chip off the shared SPI bus.
 font_cs = digitalio.DigitalInOut(board.IO9)
 font_cs.direction = digitalio.Direction.OUTPUT
 font_cs.value = True
@@ -114,160 +70,153 @@ display_bus = fourwire.FourWire(
     baudrate=8_000_000,
 )
 display = adafruit_st7735r.ST7735R(
-    display_bus, width=128, height=160, rotation=0, bgr=True,
+    display_bus, width=WIDTH, height=HEIGHT, rotation=0, bgr=True,
     auto_refresh=False,
 )
 
 
-# ------------------------------------------------------------------
-# Persistence -- store the sample NAME in NVM (not the index), so
-# adding, removing, or reordering samples doesn't scramble the saved
-# pick. Layout: byte 0 = length, bytes 1..1+length = ASCII name.
-# Fresh NVM reads 0xFF, which falls through to the default.
-# ------------------------------------------------------------------
-_NVM_MAX = 32
+# Display helpers --------------------------------------------------
+def background(color=0x000010):
+    bitmap = displayio.Bitmap(WIDTH, HEIGHT, 1)
+    palette = displayio.Palette(1)
+    palette[0] = color
+    return displayio.TileGrid(bitmap, pixel_shader=palette)
 
 
-def load_index():
-    if not SAMPLES:
-        return 0
-    try:
-        length = microcontroller.nvm[0]
-        if length == 0 or length > _NVM_MAX:
-            return 0
-        name = bytes(microcontroller.nvm[1:1 + length]).decode("ascii")
-    except Exception:
-        return 0
-    try:
-        return SAMPLES.index(name)
-    except ValueError:
-        return 0
+def centered(text, y, color=0xFFFFFF, scale=1):
+    item = label.Label(terminalio.FONT, text=text, color=color, scale=scale)
+    item.anchor_point = (0.5, 0.5)
+    item.anchored_position = (WIDTH // 2, y)
+    return item
 
 
-def save_index(idx):
-    if not SAMPLES:
-        return
-    try:
-        data = SAMPLES[idx].encode("ascii")[:_NVM_MAX]
-        microcontroller.nvm[0] = len(data)
-        microcontroller.nvm[1:1 + len(data)] = data
-    except Exception as e:
-        print("Launcher: could not save selection:", e)
+def load_image(path):
+    return adafruit_imageload.load(
+        path, bitmap=displayio.Bitmap, palette=displayio.Palette,
+    )
 
 
-# ------------------------------------------------------------------
-# Picker UI
-# ------------------------------------------------------------------
-scene = displayio.Group()
-
-bg = displayio.Bitmap(128, 160, 1)
-bg_pal = displayio.Palette(1); bg_pal[0] = 0x000010
-scene.append(displayio.TileGrid(bg, pixel_shader=bg_pal))
-
-title = label.Label(terminalio.FONT, text="PICK A SAMPLE", color=0x00FFFF)
-title.anchor_point = (0.5, 0.5)
-title.anchored_position = (64, 8)
-scene.append(title)
-
-status = label.Label(terminalio.FONT, text="", color=0xFFFF00)
-status.anchor_point = (0.5, 0.5)
-status.anchored_position = (64, 22)
-scene.append(status)
-
-item_labels = []
-for i, name in enumerate(SAMPLES):
-    lbl = label.Label(terminalio.FONT, text=name, color=0x808080)
-    lbl.anchor_point = (0.5, 0.5)
-    lbl.anchored_position = (64, 40 + i * 12)
-    scene.append(lbl)
-    item_labels.append(lbl)
-
-hint1 = label.Label(terminalio.FONT, text="S1:up  S2:down", color=0x606060)
-hint1.anchor_point = (0.5, 0.5)
-hint1.anchored_position = (64, 144)
-scene.append(hint1)
-
-hint2 = label.Label(terminalio.FONT, text="S3:run", color=0x606060)
-hint2.anchor_point = (0.5, 0.5)
-hint2.anchored_position = (64, 154)
-scene.append(hint2)
-
-display.root_group = scene
+def image_tile(bitmap, palette, x, y):
+    tile = displayio.TileGrid(bitmap, pixel_shader=palette)
+    tile.x = x
+    tile.y = y
+    return tile
 
 
-def highlight(idx):
-    for i, lbl in enumerate(item_labels):
-        lbl.color = 0xFFFF00 if i == idx else 0x808080
+logo_bitmap, logo_palette = load_image("/img/RobojuiceLogo.bmp")
+qr_bitmap, qr_palette = load_image("/img/RobojuiceQR.bmp")
+ccc_bitmap, ccc_palette = load_image("/img/CarolinaCodeConference.bmp")
 
 
-# ------------------------------------------------------------------
-# Boot -- countdown, then either open the menu or run the sample.
-# ------------------------------------------------------------------
-idx = load_index()
-highlight(idx)
-status.text = "auto in %ds" % COUNTDOWN_SEC
-display.refresh()
-bl.value = True
+def home_screen():
+    group = displayio.Group()
+    group.append(background())
+    group.append(centered("CUSTOM SOFTWARE +", 16, 0x00FFFF))
+    group.append(centered("PRACTICAL AI", 28, 0x00FFFF))
+    group.append(image_tile(logo_bitmap, logo_palette, 6, 53))
+    group.append(centered("GIVE YOUR TEAM", 104, 0xFFFFFF, 2))
+    group.append(centered("BETTER SYSTEMS", 124, 0xFFFFFF, 2))
+    group.append(centered("1 HOME  2 INFO  3 QR", 151, 0x808080))
+    return group
 
-t_end = time.monotonic() + COUNTDOWN_SEC
-entered_menu = False
 
-while time.monotonic() < t_end:
-    remaining = int(t_end - time.monotonic()) + 1
-    new_status = "auto in %ds" % remaining
-    if new_status != status.text:
-        status.text = new_status
-        display.refresh()
-    if not (sw1.value and sw2.value and sw3.value):
-        entered_menu = True
-        break
-    time.sleep(0.05)
+def info_screen():
+    group = displayio.Group()
+    group.append(background())
+    group.append(image_tile(logo_bitmap, logo_palette, 6, 12))
+    group.append(centered("GIVE YOUR TEAM", 57, 0x00FFFF, 2))
+    group.append(centered("BETTER SYSTEMS", 78, 0x00FFFF, 2))
+    group.append(centered("BRANDON JOYCE", 108, 0xFFFFFF, 2))
+    group.append(centered("SENIOR DEVELOPER", 125, 0xFFB000))
+    group.append(centered("1 HOME  2 INFO  3 QR", 151, 0x808080))
+    return group
 
-if entered_menu:
-    # wait for buttons to release before we start reading fresh presses
-    while not (sw1.value and sw2.value and sw3.value):
-        time.sleep(0.02)
 
-    status.text = "SW3 to run"
+def qr_screen():
+    group = displayio.Group()
+    group.append(background(0x000000))
+    group.append(image_tile(qr_bitmap, qr_palette, 0, 8))
+    group.append(centered("SCAN FOR ROBOJUICE.COM", 151, 0xFFFFFF))
+    return group
+
+
+def conference_screen():
+    group = displayio.Group()
+    group.append(background(0x000000))
+    group.append(image_tile(ccc_bitmap, ccc_palette, 0, 0))
+    group.append(centered("HOLD 1 + 2 + 3 TO RESET", 151, 0x808080))
+    return group
+
+
+screens = (home_screen(), info_screen(), qr_screen(), conference_screen())
+
+
+# Interaction ------------------------------------------------------
+def show_screen(index):
+    display.root_group = screens[index]
     display.refresh()
 
-    sw1_prev = sw2_prev = sw3_prev = True
-    while True:
-        v1, v2, v3 = sw1.value, sw2.value, sw3.value
-        pressed1 = (not v1) and sw1_prev
-        pressed2 = (not v2) and sw2_prev
-        pressed3 = (not v3) and sw3_prev
-        sw1_prev, sw2_prev, sw3_prev = v1, v2, v3
 
-        if pressed1:                              # SW1 = up
-            idx = (idx - 1) % len(SAMPLES)
-            highlight(idx); display.refresh(); time.sleep(0.12)
-        if pressed2:                              # SW2 = down
-            idx = (idx + 1) % len(SAMPLES)
-            highlight(idx); display.refresh(); time.sleep(0.12)
-        if pressed3:
-            break
+current_screen = HOME
+show_screen(current_screen)
+backlight.value = True
+
+previous = (True, True, True)
+reset_started = None
+last_time = time.monotonic()
+
+while True:
+    now = time.monotonic()
+    dt = now - last_time
+    last_time = now
+
+    values = (sw1.value, sw2.value, sw3.value)
+    all_pressed = not values[0] and not values[1] and not values[2]
+
+    # A deliberate hold prevents an accidental reset while someone
+    # changes screens. The conference screen is static and quiet.
+    if all_pressed:
+        if reset_started is None:
+            reset_started = now
+        elif now - reset_started >= HOLD_TO_RESET_SECONDS:
+            if current_screen != CONFERENCE:
+                current_screen = CONFERENCE
+                show_screen(current_screen)
+            pixels.fill((0, 0, 0))
+            pixels.show()
+        previous = values
         time.sleep(0.02)
+        continue
 
-    save_index(idx)
+    reset_started = None
+    pressed1 = not values[0] and previous[0]
+    pressed2 = not values[1] and previous[1]
+    pressed3 = not values[2] and previous[2]
+    previous = values
 
-status.text = "loading..."
-display.refresh()
+    if pressed1:
+        current_screen = HOME
+        show_screen(current_screen)
+    elif pressed2:
+        current_screen = INFO
+        show_screen(current_screen)
+    elif pressed3:
+        current_screen = QR
+        show_screen(current_screen)
 
-print("Launcher: running samples/%s/code.py" % SAMPLES[idx])
+    # Gentle blue/cyan breathing makes the home and information
+    # screens noticeable without distracting from the text. QR and
+    # conference screens remain dark for reliable scanning and calm.
+    if current_screen == HOME or current_screen == INFO:
+        brightness = 0.12 + 0.28 * (0.5 + 0.5 * math.sin(now * 1.7))
+        pixels[0] = (0, int(100 * brightness), int(150 * brightness))
+        pixels[1] = (0, int(140 * brightness), int(210 * brightness))
+        pixels[2] = (0, int(180 * brightness), int(255 * brightness))
+        pixels[3] = (0, int(140 * brightness), int(210 * brightness))
+        pixels[4] = (0, int(100 * brightness), int(150 * brightness))
+        pixels.show()
+    elif dt > 0:
+        pixels.fill((0, 0, 0))
+        pixels.show()
 
-
-# ------------------------------------------------------------------
-# Hand off -- release every pin/bus the launcher claimed so the
-# sample can init its own hardware from a clean slate.
-# ------------------------------------------------------------------
-sw1.deinit(); sw2.deinit(); sw3.deinit()
-font_cs.deinit()
-bl.deinit()
-displayio.release_displays()
-spi.deinit()
-
-path = "/samples/%s/code.py" % SAMPLES[idx]
-with open(path) as f:
-    source = f.read()
-exec(source, {"__name__": "__main__", "__file__": path})
+    time.sleep(0.02)
