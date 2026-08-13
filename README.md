@@ -89,14 +89,17 @@ menu. Its three buttons also provide two hidden shortcuts:
 | SW2 | Show Brandon Joyce's information |
 | SW3 | Show the Robojuice QR code |
 | SW1 + SW3 together | Show the labeled LinkedIn QR code |
-| Double-tap SW2 | Start one-player Pong |
+| Hold SW2 + SW3 for 0.6 seconds | Start one-player Pong |
 | Hold SW1 + SW2 + SW3 for 1.25 seconds | Show the Carolina Code Conference screen |
 
 Pong rotates the display into landscape orientation. Hold **SW1** to move
-your lower paddle right, hold **SW3** to move it left, and press **SW2** to
-quit and return to the information screen. The upper paddle is controlled by
-the badge. The first side to five points wins; after the result, the game
-automatically restarts with a three-second countdown.
+your lower paddle right and hold **SW3** to move it left. Tap **SW2** once to
+quit and return to the information screen. Double-tap **SW2** within 0.4
+seconds to switch the computer paddle between **FOLLOW**, where it tracks the
+ball at a limited speed, and **SWEEP**, where it moves steadily back and forth
+like the original open-source automated paddle. The current mode appears near
+the top of the game screen. The first side to five points wins; after the
+result, the game automatically restarts with a three-second countdown.
 
 The Pong fixed-frame game loop and automated-paddle pattern were adapted from
 FoamyGuy's MIT-licensed

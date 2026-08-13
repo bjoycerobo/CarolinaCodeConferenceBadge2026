@@ -8,11 +8,11 @@ SW3  -- QR code for https://robojuice.com/
 
 Hidden shortcuts:
 SW1 + SW3       -- LinkedIn QR code
-Double-tap SW2  -- one-player Pong
+Hold SW2 + SW3  -- one-player Pong
 
 Pong controls:
 SW1  -- move right
-SW2  -- quit
+SW2  -- quit; double-tap changes computer mode
 SW3  -- move left
 
 Hold all three switches for 1.25 seconds to return to the Carolina
@@ -44,7 +44,8 @@ from adafruit_display_text import label
 WIDTH = 128
 HEIGHT = 160
 HOLD_TO_RESET_SECONDS = 1.25
-DOUBLE_PRESS_SECONDS = 0.4
+GAME_HOLD_SECONDS = 0.6
+DOUBLE_TAP_SECONDS = 0.4
 
 HOME = 0
 INFO = 1
@@ -226,19 +227,23 @@ def play_pong():
     scene.append(computer)
     scene.append(ball)
 
+    mode_label = centered_on("CPU: FOLLOW", game_width // 2, 18, 0xFFB000)
     score = centered_on("CPU 0  YOU 0", game_width // 2, 54, 0xFFFFFF)
     message = centered_on("", game_width // 2, 74, 0xFFFFFF)
-    hint = centered_on("S3<  S2 QUIT  >S1", game_width // 2, 88, 0x607080)
+    hint = centered_on("S3<             >S1", game_width // 2, 88, 0x607080)
+    mode_hint = centered_on("S2 TAP QUIT / 2X MODE", game_width // 2, 100, 0x607080)
+    scene.append(mode_label)
     scene.append(score)
     scene.append(message)
     scene.append(hint)
+    scene.append(mode_hint)
 
     display.rotation = 90
     display.root_group = scene
     pixels.fill((0, 0, 0))
     pixels.show()
 
-    # Do not treat the second tap that opened Pong as an immediate quit.
+    # Do not treat the SW2 + SW3 entry chord as game input.
     while not (sw1.value and sw2.value and sw3.value):
         time.sleep(0.02)
 
@@ -270,6 +275,10 @@ def play_pong():
     ball_x, ball_y, ball_vx, ball_vy = reset_ball(serve_direction)
     last_frame = time.monotonic()
     computer_update = 0
+    computer_follows_ball = True
+    computer_going_left = True
+    previous_sw2 = True
+    pending_quit_at = None
 
     while True:
         now = time.monotonic()
@@ -281,9 +290,26 @@ def play_pong():
             dt = 0.08
         last_frame = now
 
-        if not sw2.value:
+        sw2_value = sw2.value
+        sw2_pressed = not sw2_value and previous_sw2
+        previous_sw2 = sw2_value
+
+        # A single tap quits after the double-tap window. A second tap in
+        # that window toggles between following the ball and the upstream
+        # AutoPaddle-style steady back-and-forth movement.
+        if pending_quit_at is not None and now > pending_quit_at:
             display.rotation = 0
             return
+        if sw2_pressed:
+            if pending_quit_at is not None:
+                pending_quit_at = None
+                computer_follows_ball = not computer_follows_ball
+                if computer_follows_ball:
+                    mode_label.text = "CPU: FOLLOW"
+                else:
+                    mode_label.text = "CPU: SWEEP"
+            else:
+                pending_quit_at = now + DOUBLE_TAP_SECONDS
 
         # Holding both movement buttons leaves the player's paddle still.
         if not sw1.value and sw3.value:
@@ -296,17 +322,29 @@ def play_pong():
             player_x = game_width - paddle_width
 
         # Automated paddle adapted from the upstream AutoPaddle update pattern.
-        # Updating less often and limiting its speed keeps the computer beatable.
-        computer_update += 1
-        if computer_update >= 3:
-            target = ball_x + ball_size / 2
-            center = computer_x + paddle_width / 2
-            step = 3.0
-            if target < center - 3:
-                computer_x -= step
-            elif target > center + 3:
-                computer_x += step
-            computer_update = 0
+        if computer_follows_ball:
+            # Updating less often and limiting speed keeps FOLLOW beatable.
+            computer_update += 1
+            if computer_update >= 3:
+                target = ball_x + ball_size / 2
+                center = computer_x + paddle_width / 2
+                step = 3.0
+                if target < center - 3:
+                    computer_x -= step
+                elif target > center + 3:
+                    computer_x += step
+                computer_update = 0
+        else:
+            # This mirrors the original AutoPaddle: move steadily until an
+            # edge is reached, reverse direction, and repeat.
+            if computer_going_left:
+                computer_x -= 1
+            else:
+                computer_x += 1
+            if computer_x <= 0:
+                computer_going_left = False
+            elif computer_x >= game_width - paddle_width:
+                computer_going_left = True
         if computer_x < 0:
             computer_x = 0
         elif computer_x > game_width - paddle_width:
@@ -391,7 +429,7 @@ backlight.value = True
 
 previous = (True, True, True)
 reset_started = None
-pending_info_at = None
+game_hold_started = None
 last_time = time.monotonic()
 
 while True:
@@ -401,6 +439,7 @@ while True:
 
     values = (sw1.value, sw2.value, sw3.value)
     all_pressed = not values[0] and not values[1] and not values[2]
+    game_pressed = values[0] and not values[1] and not values[2]
     linkedin_pressed = not values[0] and values[1] and not values[2]
 
     # A deliberate hold prevents an accidental reset while someone
@@ -419,6 +458,23 @@ while True:
         continue
 
     reset_started = None
+
+    if game_pressed:
+        if game_hold_started is None:
+            game_hold_started = now
+        elif now - game_hold_started >= GAME_HOLD_SECONDS:
+            play_pong()
+            current_screen = INFO
+            show_screen(current_screen)
+            previous = (sw1.value, sw2.value, sw3.value)
+            last_time = time.monotonic()
+            game_hold_started = None
+        else:
+            previous = values
+        time.sleep(0.02)
+        continue
+
+    game_hold_started = None
     pressed1 = not values[0] and previous[0]
     pressed2 = not values[1] and previous[1]
     pressed3 = not values[2] and previous[2]
@@ -426,33 +482,18 @@ while True:
 
     if linkedin_pressed:
         current_screen = LINKEDIN
-        pending_info_at = None
         show_screen(current_screen)
         while not (sw1.value and sw3.value):
             time.sleep(0.02)
         previous = (sw1.value, sw2.value, sw3.value)
     elif pressed2:
-        if pending_info_at is not None and now <= pending_info_at:
-            pending_info_at = None
-            play_pong()
-            current_screen = INFO
-            show_screen(current_screen)
-            previous = (sw1.value, sw2.value, sw3.value)
-            last_time = time.monotonic()
-        else:
-            pending_info_at = now + DOUBLE_PRESS_SECONDS
+        current_screen = INFO
+        show_screen(current_screen)
     elif pressed1:
-        pending_info_at = None
         current_screen = HOME
         show_screen(current_screen)
     elif pressed3:
-        pending_info_at = None
         current_screen = QR
-        show_screen(current_screen)
-
-    if pending_info_at is not None and now > pending_info_at:
-        pending_info_at = None
-        current_screen = INFO
         show_screen(current_screen)
 
     # Gentle blue/cyan breathing makes the home and information
