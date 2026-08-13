@@ -78,6 +78,32 @@ public/
 
 Each sample folder contains a `code.py` and a `README.md` explaining what the sample does, its controls, and a brief walkthrough of the code design.
 
+## Preloaded Robojuice Menu and Pong
+
+The top-level `code.py` included in this repository is the Robojuice badge
+menu. Its three buttons also provide two hidden shortcuts:
+
+| Input | Menu action |
+|---|---|
+| SW1 | Show the Robojuice home screen |
+| SW2 | Show Brandon Joyce's information |
+| SW3 | Show the Robojuice QR code |
+| SW1 + SW3 together | Show the labeled LinkedIn QR code |
+| Double-tap SW2 | Start one-player Pong |
+| Hold SW1 + SW2 + SW3 for 1.25 seconds | Show the Carolina Code Conference screen |
+
+Pong rotates the display into landscape orientation. Hold **SW1** to move
+your lower paddle right, hold **SW3** to move it left, and press **SW2** to
+quit and return to the information screen. The upper paddle is controlled by
+the badge. The first side to five points wins; after the result, the game
+automatically restarts with a three-second countdown.
+
+The Pong fixed-frame game loop and automated-paddle pattern were adapted from
+FoamyGuy's MIT-licensed
+[CircuitPython Badge Reverse Pong Game](https://github.com/FoamyGuy/CircuitPython-Badge-Reverse-Pong-Game).
+The implementation here uses the badge's existing `displayio` primitives and
+button wiring, so it does not require any additional libraries.
+
 
 ### What's preloaded
 

@@ -6,6 +6,15 @@ SW1  -- Robojuice home
 SW2  -- Robojuice / Brandon Joyce information
 SW3  -- QR code for https://robojuice.com/
 
+Hidden shortcuts:
+SW1 + SW3       -- LinkedIn QR code
+Double-tap SW2  -- one-player Pong
+
+Pong controls:
+SW1  -- move right
+SW2  -- quit
+SW3  -- move left
+
 Hold all three switches for 1.25 seconds to return to the Carolina
 Code Conference default screen.
 
@@ -35,11 +44,13 @@ from adafruit_display_text import label
 WIDTH = 128
 HEIGHT = 160
 HOLD_TO_RESET_SECONDS = 1.25
+DOUBLE_PRESS_SECONDS = 0.4
 
 HOME = 0
 INFO = 1
 QR = 2
 CONFERENCE = 3
+LINKEDIN = 4
 
 
 # Hardware ---------------------------------------------------------
@@ -84,9 +95,13 @@ def background(color=0x000010):
 
 
 def centered(text, y, color=0xFFFFFF, scale=1):
+    return centered_on(text, WIDTH // 2, y, color, scale)
+
+
+def centered_on(text, x, y, color=0xFFFFFF, scale=1):
     item = label.Label(terminalio.FONT, text=text, color=color, scale=scale)
     item.anchor_point = (0.5, 0.5)
-    item.anchored_position = (WIDTH // 2, y)
+    item.anchored_position = (x, y)
     return item
 
 
@@ -105,7 +120,8 @@ def image_tile(bitmap, palette, x, y):
 
 logo_bitmap, logo_palette = load_image("/img/RobojuiceLogo.bmp")
 qr_bitmap, qr_palette = load_image("/img/RobojuiceQR.bmp")
-ccc_bitmap, ccc_palette = load_image("/img/CarolinaCodeConference.bmp")
+linkedin_bitmap, linkedin_palette = load_image("/img/LinkedInQR.bmp")
+ccc_bitmap, ccc_palette = load_image("/img/CarolinaCodeConference Logo.bmp")
 
 
 def home_screen():
@@ -148,7 +164,20 @@ def conference_screen():
     return group
 
 
-screens = (home_screen(), info_screen(), qr_screen(), conference_screen())
+def linkedin_screen():
+    group = displayio.Group()
+    group.append(background(0xFFFFFF))
+    group.append(centered("CONNECT ON LINKEDIN", 10, 0x0A66C2))
+    group.append(image_tile(linkedin_bitmap, linkedin_palette, 8, 22))
+    group.append(centered("linkedin.com/in/", 143, 0x202020))
+    group.append(centered("brandonwjoyce", 154, 0x202020))
+    return group
+
+
+screens = (
+    home_screen(), info_screen(), qr_screen(), conference_screen(),
+    linkedin_screen(),
+)
 
 
 # Interaction ------------------------------------------------------
@@ -157,12 +186,212 @@ def show_screen(index):
     display.refresh()
 
 
+def solid_tile(width, height, color, x=0, y=0):
+    bitmap = displayio.Bitmap(width, height, 1)
+    palette = displayio.Palette(1)
+    palette[0] = color
+    return displayio.TileGrid(
+        bitmap, pixel_shader=palette, x=x, y=y,
+    )
+
+
+def play_pong():
+    """Run one-player Pong until SW2 is pressed.
+
+    The fixed-rate loop and automated-paddle pattern are adapted from
+    FoamyGuy's MIT-licensed CircuitPython Badge Reverse Pong Game:
+    https://github.com/FoamyGuy/CircuitPython-Badge-Reverse-Pong-Game
+    """
+    game_width = 160
+    game_height = 128
+    paddle_width = 32
+    paddle_height = 4
+    ball_size = 4
+    player_y = game_height - 8
+    computer_y = 4
+    winning_score = 5
+    frame_seconds = 1.0 / 30.0
+
+    scene = displayio.Group()
+    scene.append(solid_tile(game_width, game_height, 0x000010))
+
+    # A simple dotted center line keeps the screen recognizably Pong-like.
+    for x in range(2, game_width, 8):
+        scene.append(solid_tile(4, 1, 0x304050, x=x, y=game_height // 2))
+
+    player = solid_tile(paddle_width, paddle_height, 0x00D8FF)
+    computer = solid_tile(paddle_width, paddle_height, 0xFFB000)
+    ball = solid_tile(ball_size, ball_size, 0xFFFFFF)
+    scene.append(player)
+    scene.append(computer)
+    scene.append(ball)
+
+    score = centered_on("CPU 0  YOU 0", game_width // 2, 54, 0xFFFFFF)
+    message = centered_on("", game_width // 2, 74, 0xFFFFFF)
+    hint = centered_on("S3<  S2 QUIT  >S1", game_width // 2, 88, 0x607080)
+    scene.append(score)
+    scene.append(message)
+    scene.append(hint)
+
+    display.rotation = 90
+    display.root_group = scene
+    pixels.fill((0, 0, 0))
+    pixels.show()
+
+    # Do not treat the second tap that opened Pong as an immediate quit.
+    while not (sw1.value and sw2.value and sw3.value):
+        time.sleep(0.02)
+
+    player_x = (game_width - paddle_width) / 2
+    computer_x = (game_width - paddle_width) / 2
+    player_score = 0
+    computer_score = 0
+    serve_direction = 1
+
+    def countdown(text="GET READY"):
+        message.text = text
+        display.refresh()
+        time.sleep(0.6)
+        for number in (3, 2, 1):
+            message.text = str(number)
+            display.refresh()
+            time.sleep(1.0)
+        message.text = ""
+        display.refresh()
+
+    def reset_ball(direction):
+        ball_x = (game_width - ball_size) / 2
+        ball_y = (game_height - ball_size) / 2
+        ball_vx = 72.0 * direction
+        ball_vy = -48.0 if (player_score + computer_score) % 2 else 48.0
+        return ball_x, ball_y, ball_vx, ball_vy
+
+    countdown()
+    ball_x, ball_y, ball_vx, ball_vy = reset_ball(serve_direction)
+    last_frame = time.monotonic()
+    computer_update = 0
+
+    while True:
+        now = time.monotonic()
+        if now - last_frame < frame_seconds:
+            time.sleep(0.003)
+            continue
+        dt = now - last_frame
+        if dt > 0.08:
+            dt = 0.08
+        last_frame = now
+
+        if not sw2.value:
+            display.rotation = 0
+            return
+
+        # Holding both movement buttons leaves the player's paddle still.
+        if not sw1.value and sw3.value:
+            player_x += 105.0 * dt
+        elif not sw3.value and sw1.value:
+            player_x -= 105.0 * dt
+        if player_x < 0:
+            player_x = 0
+        elif player_x > game_width - paddle_width:
+            player_x = game_width - paddle_width
+
+        # Automated paddle adapted from the upstream AutoPaddle update pattern.
+        # Updating less often and limiting its speed keeps the computer beatable.
+        computer_update += 1
+        if computer_update >= 3:
+            target = ball_x + ball_size / 2
+            center = computer_x + paddle_width / 2
+            step = 3.0
+            if target < center - 3:
+                computer_x -= step
+            elif target > center + 3:
+                computer_x += step
+            computer_update = 0
+        if computer_x < 0:
+            computer_x = 0
+        elif computer_x > game_width - paddle_width:
+            computer_x = game_width - paddle_width
+
+        ball_x += ball_vx * dt
+        ball_y += ball_vy * dt
+
+        if ball_x <= 0:
+            ball_x = 0
+            ball_vx = abs(ball_vx)
+        elif ball_x >= game_width - ball_size:
+            ball_x = game_width - ball_size
+            ball_vx = -abs(ball_vx)
+
+        if (
+            ball_vy > 0
+            and ball_y + ball_size >= player_y
+            and ball_y <= player_y + paddle_height
+            and ball_x + ball_size >= player_x
+            and ball_x <= player_x + paddle_width
+        ):
+            ball_y = player_y - ball_size
+            offset = (
+                (ball_x + ball_size / 2)
+                - (player_x + paddle_width / 2)
+            ) / (paddle_width / 2)
+            ball_vy = -abs(ball_vy) * 1.03
+            ball_vx += offset * 28.0
+        elif (
+            ball_vy < 0
+            and ball_y <= computer_y + paddle_height
+            and ball_y + ball_size >= computer_y
+            and ball_x + ball_size >= computer_x
+            and ball_x <= computer_x + paddle_width
+        ):
+            ball_y = computer_y + paddle_height
+            ball_vy = abs(ball_vy) * 1.03
+
+        point_scored = False
+        if ball_y < -ball_size:
+            player_score += 1
+            serve_direction = -1
+            point_scored = True
+        elif ball_y > game_height:
+            computer_score += 1
+            serve_direction = 1
+            point_scored = True
+
+        if point_scored:
+            score.text = "CPU %d  YOU %d" % (computer_score, player_score)
+            if player_score >= winning_score or computer_score >= winning_score:
+                if player_score >= winning_score:
+                    result = "YOU WIN!"
+                    pixels.fill((0, 40, 12))
+                else:
+                    result = "COMPUTER WINS"
+                    pixels.fill((40, 5, 0))
+                pixels.show()
+                countdown(result)
+                pixels.fill((0, 0, 0))
+                pixels.show()
+                player_score = 0
+                computer_score = 0
+                score.text = "CPU 0  YOU 0"
+            ball_x, ball_y, ball_vx, ball_vy = reset_ball(serve_direction)
+            time.sleep(0.5)
+            last_frame = time.monotonic()
+
+        player.x = int(player_x)
+        player.y = player_y
+        computer.x = int(computer_x)
+        computer.y = computer_y
+        ball.x = int(ball_x)
+        ball.y = int(ball_y)
+        display.refresh()
+
+
 current_screen = HOME
 show_screen(current_screen)
 backlight.value = True
 
 previous = (True, True, True)
 reset_started = None
+pending_info_at = None
 last_time = time.monotonic()
 
 while True:
@@ -172,6 +401,7 @@ while True:
 
     values = (sw1.value, sw2.value, sw3.value)
     all_pressed = not values[0] and not values[1] and not values[2]
+    linkedin_pressed = not values[0] and values[1] and not values[2]
 
     # A deliberate hold prevents an accidental reset while someone
     # changes screens. The conference screen is static and quiet.
@@ -194,14 +424,35 @@ while True:
     pressed3 = not values[2] and previous[2]
     previous = values
 
-    if pressed1:
+    if linkedin_pressed:
+        current_screen = LINKEDIN
+        pending_info_at = None
+        show_screen(current_screen)
+        while not (sw1.value and sw3.value):
+            time.sleep(0.02)
+        previous = (sw1.value, sw2.value, sw3.value)
+    elif pressed2:
+        if pending_info_at is not None and now <= pending_info_at:
+            pending_info_at = None
+            play_pong()
+            current_screen = INFO
+            show_screen(current_screen)
+            previous = (sw1.value, sw2.value, sw3.value)
+            last_time = time.monotonic()
+        else:
+            pending_info_at = now + DOUBLE_PRESS_SECONDS
+    elif pressed1:
+        pending_info_at = None
         current_screen = HOME
         show_screen(current_screen)
-    elif pressed2:
-        current_screen = INFO
-        show_screen(current_screen)
     elif pressed3:
+        pending_info_at = None
         current_screen = QR
+        show_screen(current_screen)
+
+    if pending_info_at is not None and now > pending_info_at:
+        pending_info_at = None
+        current_screen = INFO
         show_screen(current_screen)
 
     # Gentle blue/cyan breathing makes the home and information
