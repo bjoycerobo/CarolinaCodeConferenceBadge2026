@@ -33,6 +33,8 @@ import time
 import math
 import random
 import gc
+import microcontroller
+import supervisor
 import busio
 import displayio
 import fourwire
@@ -47,6 +49,14 @@ WIDTH = 128
 HEIGHT = 160
 MENU_HOLD_SECONDS = 0.35
 DOUBLE_TAP_SECONDS = 0.4
+SAMPLE_RETURN_MARKER = 0xA7
+SAMPLE_MARKER_INDEX = len(microcontroller.nvm) - 1
+SAMPLE_SELECTION_INDEX = len(microcontroller.nvm) - 2
+
+return_to_menu = microcontroller.nvm[SAMPLE_MARKER_INDEX] == SAMPLE_RETURN_MARKER
+return_menu_selection = microcontroller.nvm[SAMPLE_SELECTION_INDEX]
+if return_to_menu:
+    microcontroller.nvm[SAMPLE_MARKER_INDEX] = 0
 
 HOME = 0
 INFO = 1
@@ -192,7 +202,27 @@ MENU_ITEMS = (
     "FLAPPY",
     "BADGE BLASTER",
     "BYTE DROP",
+    "DEMO: CCC LOGO",
+    "DEMO: DVD BOUNCE",
+    "DEMO: LED LAB",
+    "DEMO: MORSE CODE",
+    "DEMO: NAMEPLATE",
+    "DEMO: WEATHER",
+    "DEMO: WIFI SCAN",
 )
+
+SAMPLE_PATHS = (
+    "/samples/CCCLogo/code.py",
+    "/samples/DVDBounce/code.py",
+    "/samples/LEDLab/code.py",
+    "/samples/MorseCode/code.py",
+    "/samples/Nameplate/code.py",
+    "/samples/Weather/code.py",
+    "/samples/WiFiScanner/code.py",
+)
+
+SAMPLE_MENU_START = 9
+MENU_VISIBLE_ROWS = 9
 
 
 def build_menu():
@@ -200,8 +230,8 @@ def build_menu():
     group.append(background(0x000010))
     group.append(centered("BADGE MENU", 10, 0x00FFFF, 2))
     labels = []
-    for index, name in enumerate(MENU_ITEMS):
-        item = centered(name, 26 + index * 13, 0x708090)
+    for index in range(MENU_VISIBLE_ROWS):
+        item = centered("", 26 + index * 13, 0x708090)
         group.append(item)
         labels.append(item)
     group.append(centered("1 UP   2 OK   3 DOWN", 151, 0x607080))
@@ -275,7 +305,15 @@ def choose_menu_item(selected):
     display.root_group = menu_scene
 
     def highlight():
-        for index, item in enumerate(menu_labels):
+        maximum_start = len(MENU_ITEMS) - MENU_VISIBLE_ROWS
+        visible_start = selected - MENU_VISIBLE_ROWS // 2
+        if visible_start < 0:
+            visible_start = 0
+        elif visible_start > maximum_start:
+            visible_start = maximum_start
+        for slot, item in enumerate(menu_labels):
+            index = visible_start + slot
+            item.text = MENU_ITEMS[index]
             item.color = 0xFFFF00 if index == selected else 0x708090
         display.refresh()
 
@@ -1556,6 +1594,25 @@ def play_byte_drop():
             return
 
 
+def launch_sample(path, selected):
+    """Run an original sample in a fresh VM, returning here on reload."""
+    loading_scene = displayio.Group()
+    loading_scene.append(background(0x000010))
+    loading_scene.append(centered("LOADING DEMO", 72, 0x00FFFF, 2))
+    display.rotation = 0
+    display.root_group = loading_scene
+    display.refresh()
+
+    microcontroller.nvm[SAMPLE_SELECTION_INDEX] = selected
+    microcontroller.nvm[SAMPLE_MARKER_INDEX] = SAMPLE_RETURN_MARKER
+    supervisor.set_next_code_file(
+        path,
+        reload_on_success=True,
+        reload_on_error=True,
+    )
+    supervisor.reload()
+
+
 def open_menu(selected):
     while True:
         selected = choose_menu_item(selected)
@@ -1583,6 +1640,11 @@ def open_menu(selected):
             play_badge_blaster()
         elif selected == 8:
             play_byte_drop()
+        elif selected >= SAMPLE_MENU_START:
+            launch_sample(
+                SAMPLE_PATHS[selected - SAMPLE_MENU_START],
+                selected,
+            )
 
         # Game scenes are local to their play functions. Return to a known
         # root group before collecting them so repeated games do not fragment
@@ -1593,9 +1655,16 @@ def open_menu(selected):
 
 
 current_screen = CONFERENCE
-menu_selection = 0
+if return_to_menu and return_menu_selection < len(MENU_ITEMS):
+    menu_selection = return_menu_selection
+else:
+    menu_selection = 0
 show_screen(current_screen)
 backlight.value = True
+
+if return_to_menu:
+    menu_selection, current_screen = open_menu(menu_selection)
+    wait_for_buttons_released()
 
 menu_hold_started = None
 last_time = time.monotonic()

@@ -7,6 +7,7 @@ import adafruit_imageload
 import digitalio
 import neopixel
 import pwmio
+import supervisor
 import time
 
 # NeoPixels — start off
@@ -21,6 +22,10 @@ bl = pwmio.PWMOut(board.IO5, frequency=1000, duty_cycle=0)
 font_cs = digitalio.DigitalInOut(board.IO9)
 font_cs.direction = digitalio.Direction.OUTPUT
 font_cs.value = True
+
+menu_sw1 = digitalio.DigitalInOut(board.IO1); menu_sw1.switch_to_input(pull=digitalio.Pull.UP)
+menu_sw2 = digitalio.DigitalInOut(board.IO2); menu_sw2.switch_to_input(pull=digitalio.Pull.UP)
+menu_sw3 = digitalio.DigitalInOut(board.IO43); menu_sw3.switch_to_input(pull=digitalio.Pull.UP)
 
 # Display init (confirmed working: fourwire + adafruit_st7735r, CP 10.2.1)
 displayio.release_displays()
@@ -86,9 +91,17 @@ hue = 0.0
 HUE_RATE = 0.15   # full colour cycle every ~6.7 s
 
 last_t = time.monotonic()
+menu_hold_started = None
 
 while True:
     now = time.monotonic()
+    if not menu_sw1.value and not menu_sw2.value and not menu_sw3.value:
+        if menu_hold_started is None:
+            menu_hold_started = now
+        elif now - menu_hold_started >= 0.35:
+            supervisor.reload()
+    else:
+        menu_hold_started = None
     dt = now - last_t
     last_t = now
     elapsed = now - state_t

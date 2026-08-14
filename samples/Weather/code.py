@@ -24,7 +24,7 @@ error screen that tells you exactly which of the three values
 below to double-check. Press BOOT to retry.
 
 No API keys are required -- both web services are free and open.
-WiFi credentials live in D:\settings.toml (shared across every
+WiFi credentials live in D:\\settings.toml (shared across every
 program on the drive). The ZIP code is set in this file.
 """
 
@@ -34,7 +34,7 @@ import os
 #   Configuration
 # ==============================================================
 
-# --- WiFi credentials -- edit in D:\settings.toml ---
+# --- WiFi credentials -- edit in D:\\settings.toml ---
 WIFI_SSID = os.getenv("WIFI_SSID", "your-wifi-name")
 WIFI_PASSWORD = os.getenv("WIFI_PASSWORD", "your-wifi-password")
 
@@ -56,6 +56,7 @@ import socketpool
 import ssl
 import adafruit_requests
 import adafruit_st7735r
+import supervisor
 from adafruit_display_text import label
 
 # ------------------------------------------------------------------
@@ -69,6 +70,9 @@ pixels.show()
 # Onboard BOOT button lives on GPIO0 (active LOW)
 button = digitalio.DigitalInOut(board.IO0)
 button.switch_to_input(pull=digitalio.Pull.UP)
+menu_sw1 = digitalio.DigitalInOut(board.IO1); menu_sw1.switch_to_input(pull=digitalio.Pull.UP)
+menu_sw2 = digitalio.DigitalInOut(board.IO2); menu_sw2.switch_to_input(pull=digitalio.Pull.UP)
+menu_sw3 = digitalio.DigitalInOut(board.IO43); menu_sw3.switch_to_input(pull=digitalio.Pull.UP)
 
 # Font-ROM chip must stay deselected so the display owns the SPI bus
 font_cs = digitalio.DigitalInOut(board.IO9)
@@ -545,8 +549,18 @@ last_refresh = time.monotonic()
 last_tick = time.monotonic()
 
 REFRESH_SECONDS = 15 * 60  # auto-refresh every 15 minutes
+menu_hold_started = None
 
 while True:
+    now = time.monotonic()
+    if not menu_sw1.value and not menu_sw2.value and not menu_sw3.value:
+        if menu_hold_started is None:
+            menu_hold_started = now
+        elif now - menu_hold_started >= 0.35:
+            supervisor.reload()
+    else:
+        menu_hold_started = None
+
     # ---- BOOT button = manual retry / refresh ----
     if not button.value:
         print("BOOT pressed -- retry")
@@ -557,7 +571,6 @@ while True:
             time.sleep(0.05)
 
     # ---- Auto-refresh every REFRESH_SECONDS ----
-    now = time.monotonic()
     elapsed = now - last_refresh
     if elapsed > REFRESH_SECONDS:
         try_refresh()

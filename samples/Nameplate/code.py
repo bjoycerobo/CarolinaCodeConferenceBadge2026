@@ -41,6 +41,7 @@ import neopixel
 import terminalio
 import bitmaptools
 import adafruit_st7735r
+import supervisor
 from adafruit_display_text import label
 
 
@@ -262,9 +263,18 @@ print("  first-name scale=%d, last-name scale=%d"
 # Main loop
 # ------------------------------------------------------------------
 last_display_refresh = 0.0
+menu_hold_started = None
 
 while True:
     v1, v2, v3 = sw1.value, sw2.value, sw3.value
+    now = time.monotonic()
+    if not v1 and not v2 and not v3:
+        if menu_hold_started is None:
+            menu_hold_started = now
+        elif now - menu_hold_started >= 0.35:
+            supervisor.reload()
+    else:
+        menu_hold_started = None
     pressed_sw1 = (not v1) and sw1_prev
     pressed_sw2 = (not v2) and sw2_prev
     pressed_sw3 = (not v3) and sw3_prev
@@ -288,7 +298,7 @@ while True:
         pixels.fill((0, 0, 0)); pixels.show()
         time.sleep(0.12)
 
-    t = time.monotonic()
+    t = now
 
     # LEDs
     if leds_on:

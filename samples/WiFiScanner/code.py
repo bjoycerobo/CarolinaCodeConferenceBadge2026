@@ -44,6 +44,7 @@ import terminalio
 import wifi
 import bitmaptools
 import adafruit_st7735r
+import supervisor
 from adafruit_display_text import label
 
 
@@ -485,6 +486,7 @@ last_full_scan     = time.monotonic()
 sw1_prev = True
 sw2_prev = True
 sw3_prev = True
+menu_hold_started = None
 
 def sw_edge(prev, curr):
     """Return True on a falling edge (button just pressed)."""
@@ -492,6 +494,14 @@ def sw_edge(prev, curr):
 
 while True:
     v1, v2, v3 = sw1.value, sw2.value, sw3.value
+    now = time.monotonic()
+    if not v1 and not v2 and not v3:
+        if menu_hold_started is None:
+            menu_hold_started = now
+        elif now - menu_hold_started >= 0.35:
+            supervisor.reload()
+    else:
+        menu_hold_started = None
     pressed_sw1 = sw_edge(sw1_prev, v1)
     pressed_sw2 = sw_edge(sw2_prev, v2)
     pressed_sw3 = sw_edge(sw3_prev, v3)

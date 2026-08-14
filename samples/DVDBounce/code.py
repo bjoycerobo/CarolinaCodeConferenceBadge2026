@@ -7,6 +7,8 @@ import neopixel
 import adafruit_st7735r
 from adafruit_display_text import label
 import terminalio
+import time
+import supervisor
 
 # --- Backlight ---
 _bl = digitalio.DigitalInOut(board.IO5)
@@ -20,6 +22,10 @@ pixels = neopixel.NeoPixel(board.IO4, 5, brightness=0.4, auto_write=False)
 font_cs = digitalio.DigitalInOut(board.IO9)
 font_cs.direction = digitalio.Direction.OUTPUT
 font_cs.value = True
+
+menu_sw1 = digitalio.DigitalInOut(board.IO1); menu_sw1.switch_to_input(pull=digitalio.Pull.UP)
+menu_sw2 = digitalio.DigitalInOut(board.IO2); menu_sw2.switch_to_input(pull=digitalio.Pull.UP)
+menu_sw3 = digitalio.DigitalInOut(board.IO43); menu_sw3.switch_to_input(pull=digitalio.Pull.UP)
 
 # --- Display (confirmed working: fourwire + adafruit_st7735r, CP 10.2.1) ---
 # No MISO needed for the display; IO44 is the font chip's MISO only.
@@ -90,8 +96,17 @@ px_dir = 1
 
 # Shared hue cycles 0.0 → 1.0 continuously; jumps on DVD wall hit
 hue = 0.0
+menu_hold_started = None
 
 while True:
+    now = time.monotonic()
+    if not menu_sw1.value and not menu_sw2.value and not menu_sw3.value:
+        if menu_hold_started is None:
+            menu_hold_started = now
+        elif now - menu_hold_started >= 0.35:
+            supervisor.reload()
+    else:
+        menu_hold_started = None
     hue = (hue + 0.004) % 1.0
 
     # -- NeoPixel bounce with fading trail --

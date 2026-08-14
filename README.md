@@ -91,10 +91,14 @@ three buttons for about 0.35 seconds to open the menu from any badge screen.
 
 The menu includes the **CCC default**, **Robojuice badge**, **Robojuice QR**,
 **LinkedIn QR**, **Pong**, **Breakout**, **Flappy**, **Badge Blaster**, and
-**Byte Drop** screens. After selecting a static badge or QR screen, hold all
-three buttons to reopen the menu. Quitting a game returns directly to the menu.
-The same three-button hold works during every game, countdown, and game-over
-screen.
+**Byte Drop** screens, followed by the original **CCC Logo**, **DVD Bounce**,
+**LED Lab**, **Morse Code**, **Nameplate**, **Weather**, and **WiFi Scanner**
+demos. The menu scrolls automatically as the highlighted option moves beyond
+the visible rows.
+
+After selecting a static badge or QR screen, hold all three buttons to reopen
+the menu. Quitting a game returns directly to the menu. The same three-button
+hold works during every game, countdown, game-over screen, and original demo.
 
 Pong rotates the display into landscape orientation. Hold **SW1** to move
 your lower paddle right and hold **SW3** to move it left. Tap **SW2** once to
@@ -155,6 +159,15 @@ dimensions, piece selection, palette, interface, and scoring. They do not use
 third-party game logos, character artwork, music, or branded terminology. Byte
 Drop's mixed three-cell/five-cell packet set and 9 x 14 board are also distinct
 from the familiar seven-piece, 10 x 20 falling-block presentation.
+
+### Original badge demos
+
+Selecting an original demo starts its existing `samples/<name>/code.py` in a
+fresh CircuitPython VM run, so the menu and game scenes do not consume RAM in
+the background. Hold all three switches for about 0.35 seconds to reload the
+Robojuice menu with the previous demo still highlighted. The Weather demo
+requires WiFi credentials in `settings.toml`; WiFi Scanner does not require
+credentials.
 
 ### Storage and memory
 

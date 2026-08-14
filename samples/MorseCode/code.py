@@ -7,6 +7,7 @@ import neopixel
 import fourwire
 import adafruit_st7735r
 import pwmio
+import supervisor
 from adafruit_display_text import label
 import terminalio
 
@@ -32,6 +33,10 @@ MORSE_TABLE = {
 button = digitalio.DigitalInOut(board.IO1)
 button.direction = digitalio.Direction.INPUT
 button.pull = digitalio.Pull.UP   # True = released, False = pressed
+menu_sw2 = digitalio.DigitalInOut(board.IO2)
+menu_sw2.switch_to_input(pull=digitalio.Pull.UP)
+menu_sw3 = digitalio.DigitalInOut(board.IO43)
+menu_sw3.switch_to_input(pull=digitalio.Pull.UP)
 
 # ---------------------------------------------------------------------------
 # NeoPixels — IO4, 5 LEDs; used as input feedback
@@ -118,6 +123,7 @@ current_pattern = ""      # accumulates '.' and '-' for the current letter
 decoded_text    = ""
 char_pending    = False   # True while waiting for CHAR_TIMEOUT after a release
 led_off_time    = 0.0     # monotonic time to extinguish LEDs (0 = stay on)
+menu_hold_started = None
 
 
 def set_leds(color, duration=0.0):
@@ -149,6 +155,14 @@ def commit_char():
 while True:
     now = time.monotonic()
     raw = button.value
+
+    if not raw and not menu_sw2.value and not menu_sw3.value:
+        if menu_hold_started is None:
+            menu_hold_started = now
+        elif now - menu_hold_started >= 0.35:
+            supervisor.reload()
+    else:
+        menu_hold_started = None
 
     # --- Debounced edge detection ---
     if raw != btn_state and (now - last_edge_time) > DEBOUNCE:

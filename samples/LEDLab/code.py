@@ -22,6 +22,7 @@ import displayio
 import fourwire
 import neopixel
 import terminalio
+import supervisor
 import adafruit_st7735r
 from adafruit_display_text import label
 
@@ -426,11 +427,20 @@ print("LED Lab -- pat=%s pal=%s spd=%s" % (
 # ------------------------------------------------------------------
 last_disp = 0.0
 DISP_INTERVAL = 0.08
+menu_hold_started = None
 
 while True:
     now = time.monotonic()
 
     v1 = sw1.value; v2 = sw2.value; v3 = sw3.value
+
+    if not v1 and not v2 and not v3:
+        if menu_hold_started is None:
+            menu_hold_started = now
+        elif now - menu_hold_started >= 0.35:
+            supervisor.reload()
+    else:
+        menu_hold_started = None
 
     if (not v1) and sw1_prev and (now - sw1_last) > DEBOUNCE:
         pattern_idx = (pattern_idx + 1) % len(PATTERNS)
