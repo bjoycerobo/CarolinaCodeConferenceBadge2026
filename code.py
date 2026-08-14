@@ -982,7 +982,7 @@ def play_flappy():
 # structure demonstrated by Radomir Dopieralski's MIT-licensed Vacuum Invaders:
 # https://github.com/python-ugame/vacuum-invaders
 def play_badge_blaster():
-    """Defend the badge from descending data bugs."""
+    """Defend the badge from descending corrupted data packets."""
     game_width = 160
     game_height = 128
     ship_width = 20
@@ -1010,10 +1010,13 @@ def play_badge_blaster():
     bug_palette[0] = 0x000010
     bug_palette[1] = 0x70F0A0
     for bug_x, bug_y in (
-        (2, 0), (3, 0), (4, 0), (5, 0),
-        (1, 1), (6, 1), (0, 2), (2, 2), (5, 2), (7, 2),
-        (0, 3), (1, 3), (2, 3), (3, 3), (4, 3), (5, 3), (6, 3), (7, 3),
-        (1, 4), (3, 4), (4, 4), (6, 4), (0, 5), (7, 5),
+        (0, 0), (1, 0), (2, 0), (3, 0), (4, 0),
+        (0, 1), (4, 1), (6, 1), (7, 1),
+        (0, 2), (2, 2), (4, 2), (6, 2),
+        (0, 3), (3, 3), (4, 3), (7, 3),
+        (0, 4), (4, 4), (6, 4),
+        (0, 5), (1, 5), (2, 5), (3, 5),
+        (4, 5), (5, 5), (6, 5), (7, 5),
     ):
         bug_bitmap[bug_x, bug_y] = 1
 

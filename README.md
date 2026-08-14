@@ -116,8 +116,8 @@ is shown and the game automatically restarts with a three-second countdown.
 
 Badge Blaster is an original fixed shooter. Hold **SW1** to move right, hold
 **SW3** to move left, and press **SW2** to fire. Triple-tap **SW2** to exit, or
-use the universal three-button menu hold. Clear each wave of descending data
-bugs while avoiding their energy bolts. You have three lives.
+use the universal three-button menu hold. Clear each wave of descending
+corrupted packets while avoiding their energy bolts. You have three lives.
 
 Byte Drop is an original falling-packet puzzle played on a 9 x 14 board with a
 custom mixture of three-cell and five-cell shapes. Press **SW1** to move right,
