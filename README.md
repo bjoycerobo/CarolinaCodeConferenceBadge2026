@@ -90,9 +90,11 @@ three buttons for about 0.35 seconds to open the menu from any badge screen.
 | SW3 | Move down |
 
 The menu includes the **CCC default**, **Robojuice badge**, **Robojuice QR**,
-**LinkedIn QR**, **Pong**, **Breakout**, and **Flappy** screens. After selecting
-a static badge or QR screen, hold all three buttons to reopen the menu. Quitting
-a game returns directly to the menu.
+**LinkedIn QR**, **Pong**, **Breakout**, **Flappy**, **Badge Blaster**, and
+**Byte Drop** screens. After selecting a static badge or QR screen, hold all
+three buttons to reopen the menu. Quitting a game returns directly to the menu.
+The same three-button hold works during every game, countdown, and game-over
+screen.
 
 Pong rotates the display into landscape orientation. Hold **SW1** to move
 your lower paddle right and hold **SW3** to move it left. Tap **SW2** once to
@@ -112,6 +114,17 @@ Flappy uses either **SW1** or **SW3** to flap and **SW2** to quit. Guide the
 bird through each opening as the pipes accelerate. After a collision, the score
 is shown and the game automatically restarts with a three-second countdown.
 
+Badge Blaster is an original fixed shooter. Hold **SW1** to move right, hold
+**SW3** to move left, and press **SW2** to fire. Triple-tap **SW2** to exit, or
+use the universal three-button menu hold. Clear each wave of descending data
+bugs while avoiding their energy bolts. You have three lives.
+
+Byte Drop is an original falling-packet puzzle played on a 9 x 14 board with a
+custom mixture of three-cell and five-cell shapes. Press **SW1** to move right,
+press **SW3** to move left, tap **SW2** to rotate, and hold **SW2** to accelerate
+the packet downward. Triple-tap **SW2** to exit. Completed rows clear and the
+fall speed increases as more rows are removed.
+
 The Pong fixed-frame game loop and automated-paddle pattern were adapted from
 FoamyGuy's MIT-licensed
 [CircuitPython Badge Reverse Pong Game](https://github.com/FoamyGuy/CircuitPython-Badge-Reverse-Pong-Game).
@@ -130,12 +143,25 @@ Industries' MIT-licensed
 The original targets an 8 x 4 NeoTrellis LED grid; this version redraws the bird
 and pipes with the badge's existing `displayio` primitives.
 
+Badge Blaster's fixed-shooter structure was informed by Radomir Dopieralski's
+MIT-licensed [Vacuum Invaders](https://github.com/python-ugame/vacuum-invaders),
+which Adafruit features in its
+[CircuitPython Stage game examples](https://learn.adafruit.com/circuitpython-stage-game-library/example-games).
+This implementation uses original geometric artwork and the badge's existing
+`displayio` primitives rather than the upstream sprites or Stage engine.
+
+Badge Blaster and Byte Drop intentionally use original names, artwork, board
+dimensions, piece selection, palette, interface, and scoring. They do not use
+third-party game logos, character artwork, music, or branded terminology. Byte
+Drop's mixed three-cell/five-cell packet set and 9 x 14 board are also distinct
+from the familiar seven-piece, 10 x 20 falling-block presentation.
+
 ### Storage and memory
 
 The ESP32-S3-WROOM-1-N8 board has 8 MB of flash and no PSRAM, according to its
 [official CircuitPython board page](https://circuitpython.org/board/espressif_esp32s3_devkitc_1_n8/).
 The badge runtime files in this repository (`.py`, `.mpy`, `.bmp`, and `.toml`)
-are only about 220 KB, so adding another small game is not close to the flash
+are only about 240 KB, so adding another small game is not close to the flash
 limit. The large PNG files under `img/` are documentation/source artwork and
 should not be copied to `CIRCUITPY`.
 
