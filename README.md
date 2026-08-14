@@ -36,8 +36,8 @@ firmware work.
 
 ```
 public/
-├── code.py                   The active program on the badge. Ships preloaded
-│                             with the launcher (see samples/Launcher/).
+├── code.py                   The active program on the badge. This branch boots
+│                             to the CCC screen and includes a badge/game menu.
 ├── settings.toml.example     Copy to settings.toml and fill in your WiFi
 │                             credentials (used by samples that call wifi.radio).
 ├── README.md                 This file — hardware reference + folder guide.
@@ -78,24 +78,25 @@ public/
 
 Each sample folder contains a `code.py` and a `README.md` explaining what the sample does, its controls, and a brief walkthrough of the code design.
 
-## Preloaded Robojuice Menu and Games
+## Badge Menu and Games
 
-The top-level `code.py` included in this repository is the Robojuice badge
-menu. Its three buttons also provide three hidden shortcuts:
+The top-level `code.py` boots to the Carolina Code Conference screen. Hold all
+three buttons for about 0.35 seconds to open the menu from any badge screen.
 
-| Input | Menu action |
+| Button | Menu action |
 |---|---|
-| SW1 | Show the Robojuice home screen |
-| SW2 | Show Brandon Joyce's information |
-| SW3 | Show the Robojuice QR code |
-| SW1 + SW3 together | Show the labeled LinkedIn QR code |
-| Hold SW1 + SW2 for 0.6 seconds | Start Breakout |
-| Hold SW2 + SW3 for 0.6 seconds | Start one-player Pong |
-| Hold SW1 + SW2 + SW3 for 1.25 seconds | Show the Carolina Code Conference screen |
+| SW1 | Move up |
+| SW2 | Select |
+| SW3 | Move down |
+
+The menu includes the **CCC default**, **Robojuice badge**, **Robojuice QR**,
+**LinkedIn QR**, **Pong**, **Breakout**, and **Flappy** screens. After selecting
+a static badge or QR screen, hold all three buttons to reopen the menu. Quitting
+a game returns directly to the menu.
 
 Pong rotates the display into landscape orientation. Hold **SW1** to move
 your lower paddle right and hold **SW3** to move it left. Tap **SW2** once to
-quit and return to the information screen. Double-tap **SW2** within 0.4
+quit and return to the menu. Double-tap **SW2** within 0.4
 seconds to switch the computer paddle between **FOLLOW**, where it tracks the
 ball at a limited speed, and **SWEEP**, where it moves steadily back and forth
 like the original open-source automated paddle. The current mode appears near
@@ -106,6 +107,10 @@ Breakout also rotates the display into landscape orientation. Hold **SW1** to
 move the paddle right, hold **SW3** to move it left, and press **SW2** to quit.
 Clear all 40 bricks before losing three balls to win. After a win or game over,
 Breakout automatically resets with a three-second countdown.
+
+Flappy uses either **SW1** or **SW3** to flap and **SW2** to quit. Guide the
+bird through each opening as the pipes accelerate. After a collision, the score
+is shown and the game automatically restarts with a three-second countdown.
 
 The Pong fixed-frame game loop and automated-paddle pattern were adapted from
 FoamyGuy's MIT-licensed
@@ -119,10 +124,32 @@ MIT-licensed
 Its HDMI, keyboard, shape-library, and sound layers were replaced with this
 badge's existing `displayio` tiles and three-button controls.
 
+The Flappy gameplay structure was adapted from Dave Astels and Adafruit
+Industries' MIT-licensed
+[TrelliBird FlappyBird game](https://github.com/adafruit/Adafruit_Learning_System_Guides/tree/main/TrelliBird).
+The original targets an 8 x 4 NeoTrellis LED grid; this version redraws the bird
+and pipes with the badge's existing `displayio` primitives.
 
-### What's preloaded
+### Storage and memory
 
-The badge ships with the **Launcher** (`samples/Launcher/code.py`) already installed as the top-level `code.py`. On boot the display shows a picker with a 3-second countdown — press any button to enter the menu, or wait to auto-run your last selection. See [`samples/Launcher/README.md`](samples/Launcher/README.md) for the full behaviour.
+The ESP32-S3-WROOM-1-N8 board has 8 MB of flash and no PSRAM, according to its
+[official CircuitPython board page](https://circuitpython.org/board/espressif_esp32s3_devkitc_1_n8/).
+The badge runtime files in this repository (`.py`, `.mpy`, `.bmp`, and `.toml`)
+are only about 220 KB, so adding another small game is not close to the flash
+limit. The large PNG files under `img/` are documentation/source artwork and
+should not be copied to `CIRCUITPY`.
+
+Live RAM is the tighter constraint. Each game creates its scene only when it is
+selected, reuses small bitmaps for repeated objects, and releases the scene when
+the player quits. The exact free space on a badge depends on the CircuitPython
+firmware partition and which files are actually copied to its drive.
+
+
+### Original launcher
+
+The original **Launcher** remains at `samples/Launcher/code.py`. Copy it over
+the top-level `code.py` to restore its boot-time sample picker. See
+[`samples/Launcher/README.md`](samples/Launcher/README.md) for its full behavior.
 
 ### Running a sample
 

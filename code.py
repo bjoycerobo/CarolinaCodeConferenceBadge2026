@@ -2,22 +2,19 @@
 Robojuice conference badge
 ==========================
 
-SW1  -- Robojuice home
-SW2  -- Robojuice / Brandon Joyce information
-SW3  -- QR code for https://robojuice.com/
+Hold SW1 + SW2 + SW3 to open the badge menu.
 
-Hidden shortcuts:
-SW1 + SW3       -- LinkedIn QR code
-Hold SW1 + SW2  -- Breakout
-Hold SW2 + SW3  -- one-player Pong
+Menu controls:
+SW1  -- up
+SW2  -- select
+SW3  -- down
 
 Game controls:
 SW1  -- move right
 SW2  -- quit; double-tap changes Pong computer mode
 SW3  -- move left
 
-Hold all three switches for 1.25 seconds to return to the Carolina
-Code Conference default screen.
+In Flappy, SW1 or SW3 flaps and SW2 quits.
 
 The original sample launcher remains at samples/Launcher/code.py.
 """
@@ -32,6 +29,8 @@ backlight.value = False
 
 import time
 import math
+import random
+import gc
 import busio
 import displayio
 import fourwire
@@ -44,8 +43,7 @@ from adafruit_display_text import label
 
 WIDTH = 128
 HEIGHT = 160
-HOLD_TO_RESET_SECONDS = 1.25
-GAME_HOLD_SECONDS = 0.6
+MENU_HOLD_SECONDS = 0.35
 DOUBLE_TAP_SECONDS = 0.4
 
 HOME = 0
@@ -134,7 +132,7 @@ def home_screen():
     group.append(image_tile(logo_bitmap, logo_palette, 6, 53))
     group.append(centered("GIVE YOUR TEAM", 104, 0xFFFFFF, 2))
     group.append(centered("BETTER SYSTEMS", 124, 0xFFFFFF, 2))
-    group.append(centered("1 HOME  2 INFO  3 QR", 151, 0x808080))
+    group.append(centered("HOLD 1+2+3: MENU", 151, 0x808080))
     return group
 
 
@@ -146,7 +144,7 @@ def info_screen():
     group.append(centered("BETTER SYSTEMS", 78, 0x00FFFF, 2))
     group.append(centered("BRANDON JOYCE", 108, 0xFFFFFF, 2))
     group.append(centered("SENIOR DEVELOPER", 125, 0xFFB000))
-    group.append(centered("1 HOME  2 INFO  3 QR", 151, 0x808080))
+    group.append(centered("HOLD 1+2+3: MENU", 151, 0x808080))
     return group
 
 
@@ -162,7 +160,7 @@ def conference_screen():
     group = displayio.Group()
     group.append(background(0x000000))
     group.append(image_tile(ccc_bitmap, ccc_palette, 0, 0))
-    group.append(centered("HOLD 1 + 2 + 3 TO RESET", 151, 0x808080))
+    group.append(centered("HOLD 1+2+3: MENU", 151, 0x808080))
     return group
 
 
@@ -182,6 +180,33 @@ screens = (
 )
 
 
+MENU_ITEMS = (
+    "CCC DEFAULT",
+    "ROBOJUICE BADGE",
+    "ROBOJUICE QR",
+    "LINKEDIN QR",
+    "PONG",
+    "BREAKOUT",
+    "FLAPPY",
+)
+
+
+def build_menu():
+    group = displayio.Group()
+    group.append(background(0x000010))
+    group.append(centered("BADGE MENU", 10, 0x00FFFF, 2))
+    labels = []
+    for index, name in enumerate(MENU_ITEMS):
+        item = centered(name, 35 + index * 15, 0x708090)
+        group.append(item)
+        labels.append(item)
+    group.append(centered("1 UP   2 OK   3 DOWN", 151, 0x607080))
+    return group, labels
+
+
+menu_scene, menu_labels = build_menu()
+
+
 # Interaction ------------------------------------------------------
 def show_screen(index):
     display.root_group = screens[index]
@@ -195,6 +220,45 @@ def solid_tile(width, height, color, x=0, y=0):
     return displayio.TileGrid(
         bitmap, pixel_shader=palette, x=x, y=y,
     )
+
+
+def wait_for_buttons_released():
+    while not (sw1.value and sw2.value and sw3.value):
+        time.sleep(0.02)
+
+
+def choose_menu_item(selected):
+    display.rotation = 0
+    display.root_group = menu_scene
+
+    def highlight():
+        for index, item in enumerate(menu_labels):
+            item.color = 0xFFFF00 if index == selected else 0x708090
+        display.refresh()
+
+    wait_for_buttons_released()
+    highlight()
+    previous_values = (True, True, True)
+
+    while True:
+        values = (sw1.value, sw2.value, sw3.value)
+        pressed1 = not values[0] and previous_values[0]
+        pressed2 = not values[1] and previous_values[1]
+        pressed3 = not values[2] and previous_values[2]
+        previous_values = values
+
+        if pressed1:
+            selected = (selected - 1) % len(MENU_ITEMS)
+            highlight()
+            time.sleep(0.12)
+        elif pressed3:
+            selected = (selected + 1) % len(MENU_ITEMS)
+            highlight()
+            time.sleep(0.12)
+        elif pressed2:
+            wait_for_buttons_released()
+            return selected
+        time.sleep(0.02)
 
 
 def play_pong():
@@ -244,9 +308,8 @@ def play_pong():
     pixels.fill((0, 0, 0))
     pixels.show()
 
-    # Do not treat the SW2 + SW3 entry chord as game input.
-    while not (sw1.value and sw2.value and sw3.value):
-        time.sleep(0.02)
+    # Do not treat the menu selection press as game input.
+    wait_for_buttons_released()
 
     player_x = (game_width - paddle_width) / 2
     computer_x = (game_width - paddle_width) / 2
@@ -489,9 +552,8 @@ def play_breakout():
     pixels.fill((0, 0, 0))
     pixels.show()
 
-    # Do not treat the SW1 + SW2 entry chord as game input.
-    while not (sw1.value and sw2.value and sw3.value):
-        time.sleep(0.02)
+    # Do not treat the menu selection press as game input.
+    wait_for_buttons_released()
 
     def countdown(text="BREAKOUT"):
         message.text = text
@@ -647,14 +709,207 @@ def play_breakout():
         display.refresh()
 
 
-current_screen = HOME
+# SPDX-FileCopyrightText: 2018 Dave Astels for Adafruit Industries
+#
+# SPDX-License-Identifier: MIT
+#
+# FlappyBird type game adapted from Adafruit's TrelliBird.
+#
+# Adafruit invests time and resources providing this open source code.
+# Please support Adafruit and open source hardware by purchasing
+# products from Adafruit!
+#
+# Written by Dave Astels for Adafruit Industries
+# Copyright (c) 2018 Adafruit Industries
+# Licensed under the MIT license.
+#
+# All text above must be included in any redistribution.
+# https://github.com/adafruit/Adafruit_Learning_System_Guides/tree/main/TrelliBird
+def play_flappy():
+    """Run a FlappyBird-style game until SW2 is pressed."""
+    game_width = 160
+    game_height = 128
+    ceiling_y = 15
+    ground_y = 117
+    bird_x = 32
+    bird_width = 7
+    bird_height = 6
+    pipe_width = 14
+    pipe_gap = 42
+    pipe_spacing = 90
+    frame_seconds = 1.0 / 30.0
+
+    scene = displayio.Group()
+    scene.append(solid_tile(game_width, game_height, 0x082040))
+    scene.append(solid_tile(game_width, 11, 0x183008, y=ground_y))
+
+    score_label = centered_on("SCORE 0", game_width // 2, 8, 0xFFFFFF)
+    message = centered_on("", game_width // 2, 64, 0xFFFFFF, 2)
+    hint = centered_on("S1/S3 FLAP   S2 QUIT", game_width // 2, 123, 0xA0C080)
+    scene.append(score_label)
+    scene.append(message)
+    scene.append(hint)
+
+    bird = solid_tile(bird_width, bird_height, 0xFFE040, bird_x, 58)
+    scene.append(bird)
+
+    pipe_bitmap = displayio.Bitmap(pipe_width, game_height, 1)
+    pipe_palette = displayio.Palette(1)
+    pipe_palette[0] = 0x30C860
+    pipes = []
+    for index in range(2):
+        top = displayio.TileGrid(pipe_bitmap, pixel_shader=pipe_palette)
+        bottom = displayio.TileGrid(pipe_bitmap, pixel_shader=pipe_palette)
+        scene.append(top)
+        scene.append(bottom)
+        pipes.append([top, bottom, game_width + index * pipe_spacing, 64, False])
+
+    display.rotation = 90
+    display.root_group = scene
+    pixels.fill((0, 0, 0))
+    pixels.show()
+    wait_for_buttons_released()
+
+    def position_pipe(pipe, x_position):
+        gap_center = random.randint(42, 90)
+        pipe[2] = x_position
+        pipe[3] = gap_center
+        pipe[4] = False
+        gap_top = gap_center - pipe_gap // 2
+        gap_bottom = gap_center + pipe_gap // 2
+        pipe[0].x = int(x_position)
+        pipe[0].y = gap_top - game_height
+        pipe[1].x = int(x_position)
+        pipe[1].y = gap_bottom
+
+    def countdown(text):
+        message.text = text
+        display.refresh()
+        time.sleep(0.6)
+        for number in (3, 2, 1):
+            message.text = str(number)
+            display.refresh()
+            time.sleep(1.0)
+        message.text = ""
+
+    while True:
+        bird_y = 56.0
+        bird_velocity = 0.0
+        score = 0
+        score_label.text = "SCORE 0"
+        position_pipe(pipes[0], game_width + 20)
+        position_pipe(pipes[1], game_width + 20 + pipe_spacing)
+        bird.y = int(bird_y)
+        countdown("FLAPPY")
+        last_frame = time.monotonic()
+        previous_values = (True, True, True)
+        collided = False
+
+        while not collided:
+            now = time.monotonic()
+            if now - last_frame < frame_seconds:
+                time.sleep(0.003)
+                continue
+            dt = now - last_frame
+            if dt > 0.08:
+                dt = 0.08
+            last_frame = now
+
+            values = (sw1.value, sw2.value, sw3.value)
+            pressed1 = not values[0] and previous_values[0]
+            pressed2 = not values[1] and previous_values[1]
+            pressed3 = not values[2] and previous_values[2]
+            previous_values = values
+
+            if pressed2:
+                display.rotation = 0
+                return
+            if pressed1 or pressed3:
+                bird_velocity = -72.0
+
+            bird_velocity += 150.0 * dt
+            bird_y += bird_velocity * dt
+            bird.y = int(bird_y)
+
+            pipe_speed = 48.0 + min(score * 1.5, 24.0)
+            rightmost = max(pipes[0][2], pipes[1][2])
+            for pipe in pipes:
+                pipe[2] -= pipe_speed * dt
+                if pipe[2] + pipe_width < 0:
+                    position_pipe(pipe, rightmost + pipe_spacing)
+                    rightmost = pipe[2]
+                else:
+                    pipe[0].x = int(pipe[2])
+                    pipe[1].x = int(pipe[2])
+
+                if not pipe[4] and pipe[2] + pipe_width < bird_x:
+                    pipe[4] = True
+                    score += 1
+                    score_label.text = "SCORE %d" % score
+
+                overlaps_pipe = (
+                    bird_x + bird_width >= pipe[2]
+                    and bird_x <= pipe[2] + pipe_width
+                )
+                if overlaps_pipe:
+                    gap_top = pipe[3] - pipe_gap // 2
+                    gap_bottom = pipe[3] + pipe_gap // 2
+                    if bird_y <= gap_top or bird_y + bird_height >= gap_bottom:
+                        collided = True
+
+            if bird_y <= ceiling_y or bird_y + bird_height >= ground_y:
+                collided = True
+
+            display.refresh()
+
+        pixels.fill((40, 5, 0))
+        pixels.show()
+        message.text = "GAME OVER"
+        display.refresh()
+        time.sleep(1.0)
+        pixels.fill((0, 0, 0))
+        pixels.show()
+        countdown("SCORE %d" % score)
+
+
+def open_menu(selected):
+    while True:
+        selected = choose_menu_item(selected)
+
+        if selected == 0:
+            show_screen(CONFERENCE)
+            return selected, CONFERENCE
+        if selected == 1:
+            show_screen(INFO)
+            return selected, INFO
+        if selected == 2:
+            show_screen(QR)
+            return selected, QR
+        if selected == 3:
+            show_screen(LINKEDIN)
+            return selected, LINKEDIN
+
+        if selected == 4:
+            play_pong()
+        elif selected == 5:
+            play_breakout()
+        elif selected == 6:
+            play_flappy()
+
+        # Game scenes are local to their play functions. Return to a known
+        # root group before collecting them so repeated games do not fragment
+        # the ESP32-S3's heap.
+        display.rotation = 0
+        display.root_group = menu_scene
+        gc.collect()
+
+
+current_screen = CONFERENCE
+menu_selection = 0
 show_screen(current_screen)
 backlight.value = True
 
-previous = (True, True, True)
-reset_started = None
-pong_hold_started = None
-breakout_hold_started = None
+menu_hold_started = None
 last_time = time.monotonic()
 
 while True:
@@ -662,87 +917,23 @@ while True:
     dt = now - last_time
     last_time = now
 
-    values = (sw1.value, sw2.value, sw3.value)
-    all_pressed = not values[0] and not values[1] and not values[2]
-    breakout_pressed = not values[0] and not values[1] and values[2]
-    pong_pressed = values[0] and not values[1] and not values[2]
-    linkedin_pressed = not values[0] and values[1] and not values[2]
-
-    # A deliberate hold prevents an accidental reset while someone
-    # changes screens. The conference screen is static and quiet.
+    all_pressed = not sw1.value and not sw2.value and not sw3.value
     if all_pressed:
-        if reset_started is None:
-            reset_started = now
-        elif now - reset_started >= HOLD_TO_RESET_SECONDS:
-            if current_screen != CONFERENCE:
-                current_screen = CONFERENCE
-                show_screen(current_screen)
-            pixels.fill((0, 0, 0))
-            pixels.show()
-        previous = values
-        time.sleep(0.02)
-        continue
-
-    reset_started = None
-
-    if breakout_pressed:
-        if breakout_hold_started is None:
-            breakout_hold_started = now
-        elif now - breakout_hold_started >= GAME_HOLD_SECONDS:
-            play_breakout()
-            current_screen = INFO
-            show_screen(current_screen)
-            previous = (sw1.value, sw2.value, sw3.value)
+        if menu_hold_started is None:
+            menu_hold_started = now
+        elif now - menu_hold_started >= MENU_HOLD_SECONDS:
+            menu_selection, current_screen = open_menu(menu_selection)
+            wait_for_buttons_released()
+            menu_hold_started = None
             last_time = time.monotonic()
-            breakout_hold_started = None
-        else:
-            previous = values
         time.sleep(0.02)
         continue
 
-    breakout_hold_started = None
+    menu_hold_started = None
 
-    if pong_pressed:
-        if pong_hold_started is None:
-            pong_hold_started = now
-        elif now - pong_hold_started >= GAME_HOLD_SECONDS:
-            play_pong()
-            current_screen = INFO
-            show_screen(current_screen)
-            previous = (sw1.value, sw2.value, sw3.value)
-            last_time = time.monotonic()
-            pong_hold_started = None
-        else:
-            previous = values
-        time.sleep(0.02)
-        continue
-
-    pong_hold_started = None
-    pressed1 = not values[0] and previous[0]
-    pressed2 = not values[1] and previous[1]
-    pressed3 = not values[2] and previous[2]
-    previous = values
-
-    if linkedin_pressed:
-        current_screen = LINKEDIN
-        show_screen(current_screen)
-        while not (sw1.value and sw3.value):
-            time.sleep(0.02)
-        previous = (sw1.value, sw2.value, sw3.value)
-    elif pressed2:
-        current_screen = INFO
-        show_screen(current_screen)
-    elif pressed1:
-        current_screen = HOME
-        show_screen(current_screen)
-    elif pressed3:
-        current_screen = QR
-        show_screen(current_screen)
-
-    # Gentle blue/cyan breathing makes the home and information
-    # screens noticeable without distracting from the text. QR and
-    # conference screens remain dark for reliable scanning and calm.
-    if current_screen == HOME or current_screen == INFO:
+    # Gentle blue/cyan breathing makes the Robojuice badge noticeable.
+    # QR and conference screens remain dark for reliable scanning and calm.
+    if current_screen == INFO:
         brightness = 0.12 + 0.28 * (0.5 + 0.5 * math.sin(now * 1.7))
         pixels[0] = (0, int(100 * brightness), int(150 * brightness))
         pixels[1] = (0, int(140 * brightness), int(210 * brightness))
